@@ -144,6 +144,26 @@ If `CLOUDSDK_CONFIG` is set, that directory is used instead of `~/.config/gcloud
 
 Credential files and directories are created with restrictive permissions (`0600` for files, `0700` for directories). These files contain credentials: **do not commit them to Git** and do not copy them into the repository.
 
+## Shared state and parallel environments
+
+All terminals and tools using the same Cloud SDK config directory share its active gcloud configuration and default ADC file. A switch changes that shared state; it does not select an independent environment for the current terminal. The last switch affects subsequent commands using that directory. Already-running tools may cache credentials and may not pick up the change immediately.
+
+For independent environments in parallel, set a different `CLOUDSDK_CONFIG` directory in each terminal **before** configuring gcloud, authenticating, and starting `gcloud-env`:
+
+```bash
+# Development terminal
+export CLOUDSDK_CONFIG="$HOME/.config/gcloud-development"
+
+# Production terminal (a separate shell)
+export CLOUDSDK_CONFIG="$HOME/.config/gcloud-production"
+```
+
+Each directory needs its own gcloud configurations and ADC setup. Ensure that the tools you use honor this setting; an explicit `GOOGLE_APPLICATION_CREDENTIALS` path or another credential override can take precedence over default ADC discovery.
+
+**Current concurrency bug:** simultaneous `gcloud-env` switches in the same directory are not serialized. Configuration activation and ADC restoration are separate steps, so overlapping switches can leave the active configuration and ADC belonging to different profiles. Credential copies also share a fixed temporary filename, which can cause write/rename collisions. Until this is fixed, avoid concurrent switches or ADC authentication in the same directory.
+
+The proposed fix, tracked in [issue #1](https://github.com/minibota/gcloud-env/issues/1), is a per-directory lock between `gcloud-env` processes and unique temporary files. This would coordinate switches and ADC authentication/save operations; it would still leave state shared between terminals. It would not coordinate direct `gcloud` commands or guarantee what credentials other tools read during a switch.
+
 ## Why not `GOOGLE_APPLICATION_CREDENTIALS`?
 
 A child process cannot permanently modify environment variables in its parent shell. A CLI could print an `export ...` command and require `eval`, but that would defeat the goal of switching with one direct command. Restoring the standard ADC file makes the change visible to subsequent tools such as Cloud SQL Auth Proxy without shell integration.
