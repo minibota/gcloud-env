@@ -22,6 +22,9 @@ const (
 	cyan   = "\x1b[38;5;81m"
 )
 
+// version is set at build time with -ldflags "-X main.version=...".
+var version = "dev"
+
 type tui struct {
 	mgr      *gc.Manager
 	configs  []gc.Configuration
@@ -38,7 +41,7 @@ func main() {
 		case "help", "-h", "--help":
 			usage(0)
 		case "version", "--version":
-			fmt.Println("gcloud-env dev")
+			fmt.Printf("gcloud-env %s\n", version)
 			return
 		}
 	}
@@ -58,7 +61,7 @@ func main() {
 		fatal(err)
 	}
 	if len(configs) == 0 {
-		fatal(fmt.Errorf("no se encontraron configuraciones de gcloud"))
+		fatal(fmt.Errorf("no gcloud configurations found"))
 	}
 
 	app := &tui{mgr: mgr, configs: configs}
@@ -70,7 +73,7 @@ func main() {
 func (t *tui) run() error {
 	tty, err := os.OpenFile("/dev/tty", os.O_RDWR, 0)
 	if err != nil {
-		return fmt.Errorf("abrir terminal: %w", err)
+		return fmt.Errorf("open terminal: %w", err)
 	}
 	t.tty = tty
 	defer tty.Close()
@@ -108,7 +111,7 @@ func (t *tui) run() error {
 		case "a":
 			t.authenticateSelected()
 		case "r":
-			t.reload("Configuraciones recargadas")
+			t.reload("Configurations reloaded")
 		case "q", "ctrl-c", "esc":
 			return nil
 		}
@@ -120,7 +123,7 @@ func (t *tui) enterRaw() error {
 	cmd.Stdin = t.tty
 	out, err := cmd.Output()
 	if err != nil {
-		return fmt.Errorf("leer estado del terminal con stty: %w", err)
+		return fmt.Errorf("read terminal state with stty: %w", err)
 	}
 	t.sttyOld = strings.TrimSpace(string(out))
 
@@ -129,7 +132,7 @@ func (t *tui) enterRaw() error {
 	cmd.Stdout = t.tty
 	cmd.Stderr = t.tty
 	if err := cmd.Run(); err != nil {
-		return fmt.Errorf("activar modo TUI con stty: %w", err)
+		return fmt.Errorf("enable TUI mode with stty: %w", err)
 	}
 	return nil
 }
@@ -148,7 +151,7 @@ func (t *tui) restoreTerminal() {
 func (t *tui) render() {
 	fmt.Fprint(t.tty, "\x1b[2J\x1b[H")
 	fmt.Fprintf(t.tty, "%s%s gcloud-env%s\n", bold, purple, reset)
-	fmt.Fprintf(t.tty, "%sCambia configuración de gcloud y restaura sus ADC guardadas.%s\n\n", dim, reset)
+	fmt.Fprintf(t.tty, "%sSwitch gcloud configuration and restore its saved ADC.%s\n\n", dim, reset)
 
 	for i, cfg := range t.configs {
 		cursor := "  "
@@ -169,7 +172,7 @@ func (t *tui) render() {
 		}
 
 		fmt.Fprintf(t.tty, "%s%s  %-22s %s\n", cursor, active, name, adc)
-		fmt.Fprintf(t.tty, "      %s%-30s%s  %s%s%s\n", dim, fallback(cfg.Account, "sin cuenta"), reset, dim, fallback(cfg.Project, "sin proyecto"), reset)
+		fmt.Fprintf(t.tty, "      %s%-30s%s  %s%s%s\n", dim, fallback(cfg.Account, "no account"), reset, dim, fallback(cfg.Project, "no project"), reset)
 	}
 
 	fmt.Fprintln(t.tty)
@@ -180,7 +183,7 @@ func (t *tui) render() {
 		}
 		fmt.Fprintf(t.tty, "%s%s%s\n\n", color, t.status, reset)
 	}
-	fmt.Fprintf(t.tty, "%s↑/↓ o j/k%s mover   %sEnter%s cambiar   %sa%s autenticar ADC   %sr%s recargar   %sq%s salir\n",
+	fmt.Fprintf(t.tty, "%s↑/↓ or j/k%s move   %sEnter%s switch   %sa%s authenticate ADC   %sr%s reload   %sq%s quit\n",
 		dim, reset, bold, reset, bold, reset, bold, reset, bold, reset)
 }
 
@@ -192,9 +195,9 @@ func (t *tui) switchSelected() {
 		return
 	}
 	if restored {
-		t.setStatus(fmt.Sprintf("✓ %s activada · ADC restauradas", cfg.Name))
+		t.setStatus(fmt.Sprintf("✓ %s activated · ADC restored", cfg.Name))
 	} else {
-		t.setStatus(fmt.Sprintf("✓ %s activada · sin ADC guardadas; pulsa 'a' una vez para registrarlas", cfg.Name))
+		t.setStatus(fmt.Sprintf("✓ %s activated · no saved ADC; press 'a' once to authenticate", cfg.Name))
 	}
 	t.reload(t.status)
 }
@@ -208,13 +211,13 @@ func (t *tui) authenticateSelected() {
 
 	t.restoreTerminal()
 	fmt.Fprint(t.tty, "\x1b[?25h\x1b[2J\x1b[H")
-	fmt.Fprintf(t.tty, "%sAutenticando ADC para %s%s\n", bold, cfg.Name, reset)
-	fmt.Fprintf(t.tty, "%sCuenta: %s · Proyecto: %s%s\n\n", dim, fallback(cfg.Account, "(gcloud decidirá)"), fallback(cfg.Project, "(sin proyecto)"), reset)
+	fmt.Fprintf(t.tty, "%sAuthenticating ADC for %s%s\n", bold, cfg.Name, reset)
+	fmt.Fprintf(t.tty, "%sAccount: %s · Project: %s%s\n\n", dim, fallback(cfg.Account, "(gcloud will choose)"), fallback(cfg.Project, "(no project)"), reset)
 
 	if err := t.mgr.LoginADC(cfg); err != nil {
 		t.setError(err)
 	} else {
-		t.setStatus(fmt.Sprintf("✓ ADC autenticadas y guardadas para %s", cfg.Name))
+		t.setStatus(fmt.Sprintf("✓ ADC authenticated and saved for %s", cfg.Name))
 	}
 
 	if err := t.enterRaw(); err != nil {
@@ -306,9 +309,9 @@ func handleCLI(mgr *gc.Manager, args []string) {
 			fatal(err)
 		}
 		if restored {
-			fmt.Printf("✓ %s activada; ADC restauradas\n", args[1])
+			fmt.Printf("✓ %s activated; ADC restored\n", args[1])
 		} else {
-			fmt.Printf("✓ %s activada; no hay ADC guardadas (abre gcloud-env y pulsa 'a')\n", args[1])
+			fmt.Printf("✓ %s activated; no saved ADC (open gcloud-env and press 'a')\n", args[1])
 		}
 	case "status":
 		configs, err := mgr.ListConfigurations()
@@ -319,15 +322,15 @@ func handleCLI(mgr *gc.Manager, args []string) {
 			if cfg.Active {
 				adc := "no"
 				if cfg.HasADC {
-					adc = "sí"
+					adc = "yes"
 				}
-				fmt.Printf("config: %s\naccount: %s\nproject: %s\nadc guardadas: %s\n", cfg.Name, cfg.Account, cfg.Project, adc)
+				fmt.Printf("config: %s\naccount: %s\nproject: %s\nsaved adc: %s\n", cfg.Name, cfg.Account, cfg.Project, adc)
 				return
 			}
 		}
-		fmt.Println("No hay configuración activa")
+		fmt.Println("No active configuration")
 	case "version", "--version":
-		fmt.Println("gcloud-env dev")
+		fmt.Printf("gcloud-env %s\n", version)
 	case "help", "-h", "--help":
 		usage(0)
 	default:
@@ -338,11 +341,12 @@ func handleCLI(mgr *gc.Manager, args []string) {
 func usage(code int) {
 	fmt.Print(`gcloud-env
 
-Uso:
-  gcloud-env              abre el TUI
-  gcloud-env use NAME     activa NAME y restaura sus ADC guardadas
-  gcloud-env status       muestra el contexto activo
-  gcloud-env help         muestra esta ayuda
+Usage:
+  gcloud-env              open the TUI
+  gcloud-env use NAME     activate NAME and restore its saved ADC
+  gcloud-env status       show the active context
+  gcloud-env --version    show the build version
+  gcloud-env help         show this help
 `)
 	os.Exit(code)
 }

@@ -1,23 +1,17 @@
 # gcloud-env
 
+[![CI](https://github.com/minibota/gcloud-env/actions/workflows/ci.yml/badge.svg)](https://github.com/minibota/gcloud-env/actions/workflows/ci.yml)
+[![Release](https://img.shields.io/github/v/release/minibota/gcloud-env)](https://github.com/minibota/gcloud-env/releases/latest)
+
 A tiny Go TUI for switching between existing Google Cloud CLI configurations **and their matching Application Default Credentials (ADC)**.
 
 `gcloud` named configurations solve only part of the problem: they switch the active CLI account/project, while tools such as Cloud SQL Auth Proxy may authenticate with ADC from `~/.config/gcloud/application_default_credentials.json`. `gcloud-env` keeps one saved ADC file per gcloud configuration and restores the right one when you switch.
 
 ## What it does
 
-```text
- gcloud-env
- Changes gcloud configuration and restores its saved ADC.
+![gcloud-env TUI](docs/tui.png)
 
- › ●  default                 ADC ✓
-      pavel@example.com       western-lambda-159601
-
-      minibota                ADC ✓
-      pavel@minibota.com      minibota
-
- ↑/↓ or j/k move   Enter switch   a authenticate ADC   r reload   q quit
-```
+Actual TUI captured with isolated demo configurations and placeholder identities.
 
 - Detects existing configurations using `gcloud config configurations list`.
 - Shows each configuration's account and project.
@@ -34,6 +28,30 @@ A tiny Go TUI for switching between existing Google Cloud CLI configurations **a
 - Google Cloud CLI (`gcloud`) installed and available in `PATH`.
 - `stty` available (standard on Linux/macOS).
 - Go 1.23+ only if building from source.
+
+## Install a release
+
+Download a prebuilt archive from [Releases](https://github.com/minibota/gcloud-env/releases/latest):
+
+| System | Architecture | Archive suffix |
+| --- | --- | --- |
+| Linux | x86-64 | `linux_amd64` |
+| Linux | ARM64 | `linux_arm64` |
+| macOS | Intel | `darwin_amd64` |
+| macOS | Apple Silicon | `darwin_arm64` |
+
+For example, on Linux x86-64:
+
+```bash
+curl -fLO https://github.com/minibota/gcloud-env/releases/download/v0.1.0/gcloud-env_v0.1.0_linux_amd64.tar.gz
+curl -fLO https://github.com/minibota/gcloud-env/releases/download/v0.1.0/checksums.txt
+sha256sum --ignore-missing -c checksums.txt
+tar -xzf gcloud-env_v0.1.0_linux_amd64.tar.gz
+sudo install -m 0755 gcloud-env /usr/local/bin/gcloud-env
+gcloud-env --version
+```
+
+Google Cloud CLI and `stty` are still required. On macOS, use `shasum -a 256` to compare the archive hash with `checksums.txt`. The macOS binaries are unsigned; if Gatekeeper blocks execution, review the source and build locally.
 
 ## Build
 
@@ -155,6 +173,7 @@ and then saves the generated ADC file for that gcloud configuration.
 ```bash
 make fmt
 make test
+make vet
 make build
 ```
 
@@ -167,7 +186,11 @@ Makefile
 README.md
 ```
 
+Builds embed their version with `-ldflags "-X main.version=..."`. Use `make build VERSION=v0.1.0` for an explicit version, or `make release VERSION=v0.1.0` to create all four archives and SHA-256 checksums under `releases/v0.1.0/`. Generated binaries are distributed as GitHub Release assets rather than committed to Git.
+
 ## Security notes
+
+This tool never uploads credentials or sends them anywhere itself; it only invokes the local `gcloud` CLI and copies files within the Cloud SDK config directory. The `gcloud auth application-default login` command communicates with Google to authenticate.
 
 This tool intentionally manages local user credential files. It never prints credential contents. Saved ADC files remain on the local machine under the Cloud SDK config directory and are written with user-only permissions.
 

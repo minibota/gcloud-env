@@ -38,14 +38,14 @@ type Manager struct {
 func NewManager() (*Manager, error) {
 	path, err := exec.LookPath("gcloud")
 	if err != nil {
-		return nil, errors.New("gcloud no está instalado o no está en PATH")
+		return nil, errors.New("gcloud is not installed or is not in PATH")
 	}
 
 	configDir := os.Getenv("CLOUDSDK_CONFIG")
 	if configDir == "" {
 		home, err := os.UserHomeDir()
 		if err != nil {
-			return nil, fmt.Errorf("obtener home: %w", err)
+			return nil, fmt.Errorf("get home directory: %w", err)
 		}
 		configDir = filepath.Join(home, ".config", "gcloud")
 	}
@@ -57,12 +57,12 @@ func (m *Manager) ListConfigurations() ([]Configuration, error) {
 	cmd := exec.Command(m.GcloudPath, "config", "configurations", "list", "--format=json")
 	out, err := cmd.CombinedOutput()
 	if err != nil {
-		return nil, fmt.Errorf("listar configuraciones: %w\n%s", err, strings.TrimSpace(string(out)))
+		return nil, fmt.Errorf("list configurations: %w\n%s", err, strings.TrimSpace(string(out)))
 	}
 
 	var raw []rawListConfig
 	if err := json.Unmarshal(out, &raw); err != nil {
-		return nil, fmt.Errorf("leer salida de gcloud: %w", err)
+		return nil, fmt.Errorf("read gcloud output: %w", err)
 	}
 
 	configs := make([]Configuration, 0, len(raw))
@@ -119,7 +119,7 @@ func (m *Manager) Activate(name string) error {
 	cmd := exec.Command(m.GcloudPath, "config", "configurations", "activate", name, "--quiet")
 	out, err := cmd.CombinedOutput()
 	if err != nil {
-		return fmt.Errorf("activar %q: %w\n%s", name, err, strings.TrimSpace(string(out)))
+		return fmt.Errorf("activate %q: %w\n%s", name, err, strings.TrimSpace(string(out)))
 	}
 	return nil
 }
@@ -170,21 +170,21 @@ func (m *Manager) RestoreADC(name string) error {
 func copyCredentialFile(src, dst string) error {
 	data, err := os.ReadFile(src)
 	if err != nil {
-		return fmt.Errorf("leer ADC %s: %w", src, err)
+		return fmt.Errorf("read ADC %s: %w", src, err)
 	}
 	if !json.Valid(data) {
-		return fmt.Errorf("el fichero ADC %s no contiene JSON válido", src)
+		return fmt.Errorf("ADC file %s does not contain valid JSON", src)
 	}
 	if err := os.MkdirAll(filepath.Dir(dst), 0o700); err != nil {
-		return fmt.Errorf("crear directorio ADC: %w", err)
+		return fmt.Errorf("create ADC directory: %w", err)
 	}
 	tmp := dst + ".tmp"
 	if err := os.WriteFile(tmp, data, 0o600); err != nil {
-		return fmt.Errorf("escribir ADC temporal: %w", err)
+		return fmt.Errorf("write temporary ADC: %w", err)
 	}
 	if err := os.Rename(tmp, dst); err != nil {
 		_ = os.Remove(tmp)
-		return fmt.Errorf("instalar ADC: %w", err)
+		return fmt.Errorf("install ADC: %w", err)
 	}
 	return os.Chmod(dst, 0o600)
 }
@@ -203,7 +203,7 @@ func (m *Manager) LoginADC(cfg Configuration) error {
 	cmd.Stdout = os.Stdout
 	cmd.Stderr = os.Stderr
 	if err := cmd.Run(); err != nil {
-		return fmt.Errorf("login ADC: %w", err)
+		return fmt.Errorf("ADC login: %w", err)
 	}
 	return m.SaveCurrentADC(cfg.Name)
 }
@@ -212,7 +212,7 @@ func (m *Manager) ActiveConfiguration() (string, error) {
 	cmd := exec.Command(m.GcloudPath, "config", "configurations", "list", "--filter=is_active:true", "--format=value(name)")
 	out, err := cmd.CombinedOutput()
 	if err != nil {
-		return "", fmt.Errorf("obtener configuración activa: %w\n%s", err, strings.TrimSpace(string(out)))
+		return "", fmt.Errorf("get active configuration: %w\n%s", err, strings.TrimSpace(string(out)))
 	}
 	return strings.TrimSpace(string(out)), nil
 }
