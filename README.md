@@ -150,11 +150,11 @@ A child process cannot permanently modify environment variables in its parent sh
 
 ## How switching works
 
-For a configuration called `cosa`, `Enter` effectively does:
+For a configuration called `production`, `Enter` effectively does:
 
 ```text
-gcloud config configurations activate cosa
-restore ~/.config/gcloud/gcloud-env/adc/cosa.json
+gcloud config configurations activate production
+restore ~/.config/gcloud/gcloud-env/adc/production.json
     -> ~/.config/gcloud/application_default_credentials.json
 ```
 
