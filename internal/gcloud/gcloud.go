@@ -53,8 +53,16 @@ func NewManager() (*Manager, error) {
 	return &Manager{GcloudPath: path, ConfigDir: configDir}, nil
 }
 
+func (m *Manager) gcloudCmd(args ...string) *exec.Cmd {
+	cmd := exec.Command(m.GcloudPath, args...)
+	if m.ConfigDir != "" {
+		cmd.Env = append(os.Environ(), "CLOUDSDK_CONFIG="+m.ConfigDir)
+	}
+	return cmd
+}
+
 func (m *Manager) ListConfigurations() ([]Configuration, error) {
-	cmd := exec.Command(m.GcloudPath, "config", "configurations", "list", "--format=json")
+	cmd := m.gcloudCmd("config", "configurations", "list", "--format=json")
 	out, err := cmd.CombinedOutput()
 	if err != nil {
 		return nil, fmt.Errorf("list configurations: %w\n%s", err, strings.TrimSpace(string(out)))
@@ -96,7 +104,7 @@ func (m *Manager) ListConfigurations() ([]Configuration, error) {
 }
 
 func (m *Manager) describeCore(name string) (string, string) {
-	cmd := exec.Command(m.GcloudPath, "config", "configurations", "describe", name, "--format=json")
+	cmd := m.gcloudCmd("config", "configurations", "describe", name, "--format=json")
 	out, err := cmd.Output()
 	if err != nil {
 		return "", ""
@@ -116,7 +124,7 @@ func (m *Manager) describeCore(name string) (string, string) {
 }
 
 func (m *Manager) Activate(name string) error {
-	cmd := exec.Command(m.GcloudPath, "config", "configurations", "activate", name, "--quiet")
+	cmd := m.gcloudCmd("config", "configurations", "activate", name, "--quiet")
 	out, err := cmd.CombinedOutput()
 	if err != nil {
 		return fmt.Errorf("activate %q: %w\n%s", name, err, strings.TrimSpace(string(out)))
@@ -125,16 +133,21 @@ func (m *Manager) Activate(name string) error {
 }
 
 func (m *Manager) Switch(name string) (bool, error) {
-	if err := m.Activate(name); err != nil {
-		return false, err
-	}
-	if m.HasSavedADC(name) {
-		if err := m.RestoreADC(name); err != nil {
-			return false, err
+	var restored bool
+	err := m.withLock(func() error {
+		if err := m.Activate(name); err != nil {
+			return err
 		}
-		return true, nil
-	}
-	return false, nil
+		if !m.HasSavedADC(name) {
+			return nil
+		}
+		if err := m.RestoreADC(name); err != nil {
+			return err
+		}
+		restored = true
+		return nil
+	})
+	return restored, err
 }
 
 func (m *Manager) ADCPath() string {
@@ -178,38 +191,55 @@ func copyCredentialFile(src, dst string) error {
 	if err := os.MkdirAll(filepath.Dir(dst), 0o700); err != nil {
 		return fmt.Errorf("create ADC directory: %w", err)
 	}
-	tmp := dst + ".tmp"
-	if err := os.WriteFile(tmp, data, 0o600); err != nil {
+	tmp, err := os.CreateTemp(filepath.Dir(dst), ".adc-*.tmp")
+	if err != nil {
+		return fmt.Errorf("create temporary ADC: %w", err)
+	}
+	tmpName := tmp.Name()
+	defer os.Remove(tmpName) // no-op after a successful rename
+	if err := tmp.Chmod(0o600); err != nil {
+		tmp.Close()
+		return fmt.Errorf("set temporary ADC permissions: %w", err)
+	}
+	if _, err := tmp.Write(data); err != nil {
+		tmp.Close()
 		return fmt.Errorf("write temporary ADC: %w", err)
 	}
-	if err := os.Rename(tmp, dst); err != nil {
-		_ = os.Remove(tmp)
+	if err := tmp.Close(); err != nil {
+		return fmt.Errorf("close temporary ADC: %w", err)
+	}
+	if err := os.Rename(tmpName, dst); err != nil {
 		return fmt.Errorf("install ADC: %w", err)
 	}
 	return os.Chmod(dst, 0o600)
 }
 
 func (m *Manager) LoginADC(cfg Configuration) error {
-	args := []string{"auth", "application-default", "login"}
-	if cfg.Account != "" {
-		args = append(args, cfg.Account)
-	}
-	if cfg.Project != "" {
-		args = append(args, "--project="+cfg.Project)
-	}
+	return m.withLock(func() error {
+		if err := m.Activate(cfg.Name); err != nil {
+			return err
+		}
+		args := []string{"auth", "application-default", "login"}
+		if cfg.Account != "" {
+			args = append(args, cfg.Account)
+		}
+		if cfg.Project != "" {
+			args = append(args, "--project="+cfg.Project)
+		}
 
-	cmd := exec.Command(m.GcloudPath, args...)
-	cmd.Stdin = os.Stdin
-	cmd.Stdout = os.Stdout
-	cmd.Stderr = os.Stderr
-	if err := cmd.Run(); err != nil {
-		return fmt.Errorf("ADC login: %w", err)
-	}
-	return m.SaveCurrentADC(cfg.Name)
+		cmd := m.gcloudCmd(args...)
+		cmd.Stdin = os.Stdin
+		cmd.Stdout = os.Stdout
+		cmd.Stderr = os.Stderr
+		if err := cmd.Run(); err != nil {
+			return fmt.Errorf("ADC login: %w", err)
+		}
+		return m.SaveCurrentADC(cfg.Name)
+	})
 }
 
 func (m *Manager) ActiveConfiguration() (string, error) {
-	cmd := exec.Command(m.GcloudPath, "config", "configurations", "list", "--filter=is_active:true", "--format=value(name)")
+	cmd := m.gcloudCmd("config", "configurations", "list", "--filter=is_active:true", "--format=value(name)")
 	out, err := cmd.CombinedOutput()
 	if err != nil {
 		return "", fmt.Errorf("get active configuration: %w\n%s", err, strings.TrimSpace(string(out)))
