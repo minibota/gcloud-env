@@ -204,15 +204,12 @@ func (t *tui) switchSelected() {
 
 func (t *tui) authenticateSelected() {
 	cfg := t.configs[t.selected]
-	if err := t.mgr.Activate(cfg.Name); err != nil {
-		t.setError(err)
-		return
-	}
 
 	t.restoreTerminal()
 	fmt.Fprint(t.tty, "\x1b[?25h\x1b[2J\x1b[H")
 	fmt.Fprintf(t.tty, "%sAuthenticating ADC for %s%s\n", bold, cfg.Name, reset)
-	fmt.Fprintf(t.tty, "%sAccount: %s · Project: %s%s\n\n", dim, fallback(cfg.Account, "(gcloud will choose)"), fallback(cfg.Project, "(no project)"), reset)
+	fmt.Fprintf(t.tty, "%sAccount: %s · Project: %s%s\n", dim, fallback(cfg.Account, "(gcloud will choose)"), fallback(cfg.Project, "(no project)"), reset)
+	fmt.Fprintf(t.tty, "%sWaiting if another gcloud-env is switching this directory…%s\n\n", dim, reset)
 
 	if err := t.mgr.LoginADC(cfg); err != nil {
 		t.setError(err)

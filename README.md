@@ -160,9 +160,7 @@ export CLOUDSDK_CONFIG="$HOME/.config/gcloud-production"
 
 Each directory needs its own gcloud configurations and ADC setup. Ensure that the tools you use honor this setting; an explicit `GOOGLE_APPLICATION_CREDENTIALS` path or another credential override can take precedence over default ADC discovery.
 
-**Current concurrency bug:** simultaneous `gcloud-env` switches in the same directory are not serialized. Configuration activation and ADC restoration are separate steps, so overlapping switches can leave the active configuration and ADC belonging to different profiles. Credential copies also share a fixed temporary filename, which can cause write/rename collisions. Until this is fixed, avoid concurrent switches or ADC authentication in the same directory.
-
-The proposed fix, tracked in [issue #1](https://github.com/minibota/gcloud-env/issues/1), is a per-directory lock between `gcloud-env` processes and unique temporary files. This would coordinate switches and ADC authentication/save operations; it would still leave state shared between terminals. It would not coordinate direct `gcloud` commands or guarantee what credentials other tools read during a switch.
+Cooperating `gcloud-env` processes serialize switches and ADC login/save on an advisory lock in the config directory (released if the process exits). That keeps the active configuration and restored ADC from two overlapping `gcloud-env` runs from belonging to different profiles. Direct `gcloud` commands do not take this lock, and other tools can still observe the interval between activation and restoration. Already-running clients may cache credentials. Independent parallel environments still need separate `CLOUDSDK_CONFIG` directories.
 
 ## Why not `GOOGLE_APPLICATION_CREDENTIALS`?
 
